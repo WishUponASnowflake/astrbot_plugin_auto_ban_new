@@ -46,11 +46,17 @@
 
 ## 🚀 安装方法
 
-1. 将插件文件放入 AstrBot 插件目录
-2. 确保插件目录包含以下文件：
-   - `main.py` - 主程序文件
-   - `_conf_schema.json` - 配置模式文件
-3. 重启 AstrBot 或重载插件
+- 直接在astrbot的插件市场搜索astrbot_plugin_recall，点击安装，等待完成即可
+
+- 也可以克隆源码到插件文件夹：
+
+```bash
+# 克隆仓库到插件目录
+cd /AstrBot/data/plugins
+git clone https://github.com/nuomicici/astrbot_plugin_auto_ban_new
+
+# 控制台重启AstrBot
+```
 
 ## ⚙️ 配置说明
 
