@@ -77,13 +77,13 @@
     "description": "解除监听关键词列表",
     "type": "list",
     "hint": "用户发送包含这些关键词的消息时会被移除出监听列表，每行一个关键词",
-    "default": ["申请白名单", "banme"]
+    "default": ["我已阅读并同意遵守群规"]
   },
   "enable_poke_whitelist": {
-    "description": "启用戳一戳解除监听功能",
+    "description": "启用戳一戳解除监听功能。该功能未进行事件截断，可能会触发其他插件的戳一戳事件，请注意！",
     "type": "bool",
     "hint": "开启后，被监听用户戳一戳机器人也会被解除监听",
-    "default": true
+    "default": false
   },
   "poke_whitelist_message": {
     "description": "戳一戳解除监听提示消息",
@@ -91,4 +91,5 @@
     "hint": "用户通过戳一戳解除监听时发送的提示消息，建议为空",
     "default": ""
   }
+
 }
