@@ -1,0 +1,94 @@
+{
+  "target_groups": {
+    "description": "指定生效的群聊ID列表",
+    "type": "list",
+    "hint": "输入需要启用自动禁言功能的QQ群号，每行一个群号",
+    "default": []
+  },
+  "ban_durations": {
+    "description": "自动禁言时长设置（秒）",
+    "type": "object",
+    "hint": "按禁言次数设置对应的禁言时长，第4次及以后使用第4次的时长",
+    "items": {
+      "first_ban": {
+        "description": "第1次禁言时长（秒）",
+        "type": "int",
+        "hint": "新成员入群时的禁言时长",
+        "default": 180
+      },
+      "second_ban": {
+        "description": "第2次禁言时长（秒）",
+        "type": "int",
+        "hint": "第2次违规时的禁言时长",
+        "default": 180
+      },
+      "third_ban": {
+        "description": "第3次禁言时长（秒）",
+        "type": "int",
+        "hint": "第3次违规时的禁言时长",
+        "default": 600
+      },
+      "fourth_and_more_ban": {
+        "description": "第4次及以后禁言时长（秒）",
+        "type": "int",
+        "hint": "第4次及以后违规时的禁言时长",
+        "default": 3600
+      }
+    }
+  },
+  "welcome_message": {
+    "description": "欢迎消息",
+    "type": "text",
+    "hint": "新成员入群首次禁言时发送的欢迎消息，支持多行文本",
+    "default": ",    欢迎加入本群！为了保证你能静下心看一眼群规，避免问出已有解决方法的问题，你已被自动禁言3分钟。请先查看群规并按照要求发送/执行动作，以取消禁言检测~"
+  },
+  "ban_messages": {
+    "description": "禁言提示消息",
+    "type": "object",
+    "hint": "按禁言次数设置对应的提示消息",
+    "items": {
+      "first_message": {
+        "description": "第1次禁言提示",
+        "type": "text",
+        "hint": "改配置无效",
+        "default": "这里写什么都可以~"
+      },
+      "second_message": {
+        "description": "第2次禁言提示",
+        "type": "text",
+        "hint": "用户第2次违规时的提示消息",
+        "default": "第1次提醒：仍请先阅读群规，请先查看群规并按照要求发送/执行动作，以取消禁言检测~"
+      },
+      "third_message": {
+        "description": "第3次禁言提示",
+        "type": "text",
+        "hint": "用户第3次违规时的提示消息",
+        "default": "第2次提醒：多次未查看群规，禁言时间延长至10分钟，请认真查看群规并按照要求发送/执行动作，以取消禁言检测~"
+      },
+      "fourth_and_more_message": {
+        "description": "第4次及以后禁言提示",
+        "type": "text",
+        "hint": "用户第4次及以后违规时的提示消息",
+        "default": "还是不想查看吗？禁言时间已固定为1小时，直至阅读群规请并按照要求发送/执行动作，以取消禁言检测~"
+      }
+    }
+  },
+  "whitelist_keywords": {
+    "description": "解除监听关键词列表",
+    "type": "list",
+    "hint": "用户发送包含这些关键词的消息时会被移除出监听列表，每行一个关键词",
+    "default": ["申请白名单", "banme"]
+  },
+  "enable_poke_whitelist": {
+    "description": "启用戳一戳解除监听功能",
+    "type": "bool",
+    "hint": "开启后，被监听用户戳一戳机器人也会被解除监听",
+    "default": true
+  },
+  "poke_whitelist_message": {
+    "description": "戳一戳解除监听提示消息",
+    "type": "text",
+    "hint": "用户通过戳一戳解除监听时发送的提示消息，建议为空",
+    "default": ""
+  }
+}
