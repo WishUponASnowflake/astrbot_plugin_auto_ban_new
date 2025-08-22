@@ -4,7 +4,7 @@ from pathlib import Path
 import asyncio
 import aiohttp
 from astrbot.api.event import filter
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, register, StarTools
 from astrbot.api import logger
 from astrbot.core import AstrBotConfig
 import astrbot.api.message_components as Comp
@@ -28,8 +28,8 @@ high_priority_event = _high_priority(filter.event_message_type)
 @register(
     "astrbot_plugin_auto_ban_new",
     "糯米茨",
-    "在指定群聊中对新入群用户自动禁言并发送欢迎消息，支持多种方式解除监听",
-    "1.0"
+    "在指定群聊中对新入群用户自动禁言并发送欢迎消息，支持多种方式解除监听。",
+    "v1.0"
 )
 class AutoBanNewMemberPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
@@ -39,24 +39,27 @@ class AutoBanNewMemberPlugin(Star):
         # 读取基础配置
         self.target_groups = set(self.config.get("target_groups", []))
         
-        # 构建禁言时长列表
+        # 构建禁言时长列表，提供默认值防止配置缺失
         ban_durations_config = self.config.get("ban_durations", {})
         self.ban_durations = [
-            ban_durations_config.get("first_ban"),
-            ban_durations_config.get("second_ban"), 
-            ban_durations_config.get("third_ban"),
-            ban_durations_config.get("fourth_and_more_ban")
+            ban_durations_config.get("first_ban") or 180,
+            ban_durations_config.get("second_ban") or 180, 
+            ban_durations_config.get("third_ban") or 600,
+            ban_durations_config.get("fourth_and_more_ban") or 3600
         ]
         
-        # 读取消息配置
-        self.welcome_message = self.config.get("welcome_message")
+        # 读取消息配置，提供默认值
+        self.welcome_message = self.config.get("welcome_message") or (
+            "欢迎加入本群！为了保证你能静下心看一眼群规，避免问出已有解决方法的问题，你已被自动禁言3分钟。"
+            "\n请先查看群规，并阅读群公告。看完了还有问题可以@我"
+        )
         
         ban_messages_config = self.config.get("ban_messages", {})
         self.ban_messages = [
-            ban_messages_config.get("first_message"),
-            ban_messages_config.get("second_message"),
-            ban_messages_config.get("third_message"),
-            ban_messages_config.get("fourth_and_more_message")
+            ban_messages_config.get("first_message") or "请先查看群规再发言，不要着急哦。",
+            ban_messages_config.get("second_message") or "请先阅读群规和欢迎词内容，这次还是3分钟禁言~",
+            ban_messages_config.get("third_message") or "多次未查看群规，禁言时间延长至10分钟，请认真阅读群规！",
+            ban_messages_config.get("fourth_and_more_message") or "禁言时间固定为1小时，请认真阅读群规后再发言！"
         ]
         
         # 读取白名单关键词配置
@@ -64,13 +67,13 @@ class AutoBanNewMemberPlugin(Star):
         
         # 读取戳一戳功能配置
         self.enable_poke_whitelist = self.config.get("enable_poke_whitelist", True)
-        self.poke_whitelist_message = self.config.get("poke_whitelist_message")
+        self.poke_whitelist_message = self.config.get("poke_whitelist_message") or "检测到戳一戳，已为您解除自动禁言监听~"
         
         # 用户禁言记录存储 (群ID, 用户ID): 累计禁言次数
         self.banned_users = {}
         
-        # 数据文件路径
-        self.data_dir = Path("data") / "auto_ban_plugin"
+        # 使用框架标准方式获取数据目录
+        self.data_dir = StarTools.get_data_dir()
         self.data_file = self.data_dir / "banned_users.json"
         
     async def initialize(self):
@@ -79,16 +82,24 @@ class AutoBanNewMemberPlugin(Star):
             self.data_dir.mkdir(parents=True, exist_ok=True)
             self._load_banned_users()
             logger.info("自动禁言新成员插件已初始化，成功加载历史数据")
+        except PermissionError as e:
+            logger.error(f"初始化插件时权限不足: {e}")
+        except OSError as e:
+            logger.error(f"初始化插件时文件系统错误: {e}")
         except Exception as e:
-            logger.error(f"初始化插件时出错: {e}")
+            logger.error(f"初始化插件时出现未预期的错误: {e}")
 
     async def terminate(self):
         """插件终止时保存数据"""
         try:
             self._save_banned_users()
             logger.info("自动禁言新成员插件已终止，成功保存数据")
+        except PermissionError as e:
+            logger.error(f"终止插件时权限不足，无法保存数据: {e}")
+        except OSError as e:
+            logger.error(f"终止插件时文件系统错误: {e}")
         except Exception as e:
-            logger.error(f"终止插件时保存数据出错: {e}")
+            logger.error(f"终止插件时出现未预期的错误: {e}")
 
     def _load_banned_users(self):
         """从文件加载被禁言用户数据"""
