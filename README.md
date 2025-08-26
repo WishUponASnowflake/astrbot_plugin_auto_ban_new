@@ -1,5 +1,5 @@
 <div align="center">
-<img style="width:70%" src="https://count.getloli.com/@astrbot_plugin_auto_ban_new?name=astrbot_plugin_auto_ban_new&theme=gelbooru&padding=5&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" alt=":name">
+<img style="width:70%" src="https://count.getloli.com/@astrbot_plugin_auto_ban_new?name=astrbot_plugin_auto_ban_new&theme=gelbooru-h&padding=5&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" alt=":name">
 </div>>
 
 # AstrBot 自动禁言新成员插件
