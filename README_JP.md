@@ -3,7 +3,7 @@
 </div>
 
 # AstrBot 新規メンバー自動ミュートプラグイン
-別名「参加時ミュート」
+別名「参加時ミュート」  
 [简体中文](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README.md)|[EN](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README_en.md)|日本語
 
 ## 📋 プラグイン情報
