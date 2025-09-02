@@ -4,7 +4,7 @@
 
 # AstrBot Auto Mute New Member Plugin
 Also known as "Mute on Join"  
-[简体中文](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README.md)|EN|[日本語](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README_JP.md)
+[简体中文](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README.md) | EN | [日本語](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README_JP.md)
 
 ## 📋 Plugin Information
 
