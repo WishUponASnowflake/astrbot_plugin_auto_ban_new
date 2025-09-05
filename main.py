@@ -2,7 +2,6 @@ import json
 import os
 from pathlib import Path
 import asyncio
-import aiohttp
 from astrbot.api.event import filter
 from astrbot.api.star import Context, Star, register, StarTools
 from astrbot.api import logger
@@ -29,7 +28,7 @@ high_priority_event = _high_priority(filter.event_message_type)
     "astrbot_plugin_auto_ban_new",
     "糯米茨",
     "在指定群聊中对新入群用户自动禁言并发送欢迎消息，支持多种方式解除监听。",
-    "v1.0"
+    "v1.1"
 )
 class AutoBanNewMemberPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
@@ -68,6 +67,12 @@ class AutoBanNewMemberPlugin(Star):
         # 读取戳一戳功能配置
         self.enable_poke_whitelist = self.config.get("enable_poke_whitelist", True)
         self.poke_whitelist_message = self.config.get("poke_whitelist_message") or "检测到戳一戳，已为您解除自动禁言监听~"
+
+        # 新增：踢出功能配置
+        self.kick_threshold = self.config.get("kick_threshold", 7)
+        self.kick_message = self.config.get("kick_message") or (
+            "由于多次不看群规，你已被标记为“恶意用户”，现在踢出。你可以重新添加，但请记得查阅群规后再发言。"
+        )
         
         # 用户禁言记录存储 (群ID, 用户ID): 累计禁言次数
         self.banned_users = {}
@@ -81,7 +86,9 @@ class AutoBanNewMemberPlugin(Star):
         try:
             self.data_dir.mkdir(parents=True, exist_ok=True)
             self._load_banned_users()
-            logger.info("自动禁言新成员插件已初始化，成功加载历史数据")
+            # 启动定期检查成员的后台任务
+            asyncio.create_task(self.periodic_member_check())
+            logger.info("自动禁言新成员插件已初始化，成功加载历史数据并启动后台检查任务")
         except PermissionError as e:
             logger.error(f"初始化插件时权限不足: {e}")
         except OSError as e:
@@ -168,7 +175,7 @@ class AutoBanNewMemberPlugin(Star):
         if user_identifier in self.banned_users:
             del self.banned_users[user_identifier]
             self._save_banned_users()
-            logger.info(f"用户{user_id}在群{group_id}通过{reason}解除监听，不再自动禁言")
+            logger.info(f"用户 {user_id} 在群 {group_id} 中因“{reason}”被解除监听")
             return True
         return False
 
@@ -220,6 +227,34 @@ class AutoBanNewMemberPlugin(Star):
                     logger.error(f"处理新成员入群事件出错: {e}")
         except Exception as e:
             logger.error(f"handle_group_increase 方法出错: {e}")
+
+    @high_priority_event(filter.EventMessageType.ALL)
+    async def handle_group_decrease(self, event: AiocqhttpMessageEvent):
+        """处理群成员减少事件（主动退群或被踢）"""
+        try:
+            if not hasattr(event, "message_obj") or not hasattr(event.message_obj, "raw_message"):
+                return
+            raw_message = event.message_obj.raw_message
+            if not isinstance(raw_message, dict):
+                return
+                
+            # 检查是否为群成员减少通知
+            if (raw_message.get("post_type") == "notice" and 
+                raw_message.get("notice_type") == "group_decrease"):
+                
+                group_id = str(raw_message.get("group_id", ""))
+                user_id = int(raw_message.get("user_id", 0))
+                
+                # 非目标群直接返回
+                if not self.check_target_group(group_id):
+                    return
+                
+                user_identifier = (group_id, user_id)
+                # 如果用户在监听列表中，则移除
+                self.remove_user_from_watchlist(user_identifier, reason="成员离开或被移出群聊")
+                    
+        except Exception as e:
+            logger.error(f"handle_group_decrease 方法出错: {e}")
 
     @high_priority_event(filter.EventMessageType.ALL)
     async def handle_poke_whitelist(self, event: AiocqhttpMessageEvent):
@@ -313,23 +348,43 @@ class AutoBanNewMemberPlugin(Star):
                 logger.debug(f"用户{user_id}发送了无效消息，不触发禁言")
                 return
 
-            # 有效消息且无白名单关键词则触发禁言
+            # 有效消息且无白名单关键词则触发禁言或踢出
             try:
                 current_total_count = self.banned_users[user_identifier]
-                # 计算禁言时长索引，第4次及以后使用最后一个时长
+                new_total_count = current_total_count + 1
+
+                # 检查是否达到踢出阈值
+                if new_total_count >= self.kick_threshold:
+                    kick_message_chain = [
+                        Comp.At(qq=user_id),
+                        Comp.Plain(text=self.kick_message)
+                    ]
+                    yield event.chain_result(kick_message_chain)
+                    
+                    await event.bot.set_group_kick(
+                        group_id=int(group_id),
+                        user_id=user_id,
+                        reject_add_request=False
+                    )
+                    logger.info(f"用户 {user_id} 在群 {group_id} 中因达到 {self.kick_threshold} 次禁言上限被踢出。")
+                    
+                    # 从监听列表移除用户
+                    self.remove_user_from_watchlist(user_identifier, "达到踢出阈值")
+                    return # 结束处理
+
+                # 如果未达到踢出阈值，则执行禁言
                 duration_index = min(current_total_count, len(self.ban_durations) - 1)
                 current_ban_duration = self.ban_durations[duration_index]
                 
-                # 执行禁言
                 await event.bot.set_group_ban(
                     group_id=int(group_id),
                     user_id=user_id,
                     duration=current_ban_duration
                 )
-                logger.info(f"已第{current_total_count + 1}次禁言用户{user_id}，时长{current_ban_duration}秒")
+                logger.info(f"已第{new_total_count}次禁言用户{user_id}，时长{current_ban_duration}秒")
 
                 # 更新禁言次数
-                self.banned_users[user_identifier] = current_total_count + 1
+                self.banned_users[user_identifier] = new_total_count
                 self._save_banned_users()
                 
                 # 发送对应的提示消息
@@ -343,6 +398,54 @@ class AutoBanNewMemberPlugin(Star):
                 yield event.chain_result(response_chain)
                 
             except Exception as e:
-                logger.error(f"处理被禁言用户消息时执行禁言出错: {e}")
+                logger.error(f"处理被禁言用户消息时执行禁言或踢出操作出错: {e}")
         except Exception as e:
             logger.error(f"handle_banned_user_message 方法出错: {e}")
+
+    async def periodic_member_check(self):
+        """定期检查被监听的用户是否还在群内，以防错过退群事件"""
+        await asyncio.sleep(60)  # 启动后稍作等待，避免与其他启动任务冲突
+        while True:
+            try:
+                platform = self.context.get_platform("aiocqhttp")
+                if not platform or not hasattr(platform, "client"):
+                    logger.warning("未能获取到 aiocqhttp 平台实例，成员检查将在1小时后重试。")
+                    await asyncio.sleep(3600)
+                    continue
+
+                client = platform.client
+                # 按群组ID对被监听用户进行分组，以减少API调用次数
+                groups_to_check = {}
+                # 创建banned_users的副本进行迭代，防止在迭代过程中修改字典
+                for group_id, user_id in list(self.banned_users.keys()):
+                    if group_id not in groups_to_check:
+                        groups_to_check[group_id] = set()
+                    groups_to_check[group_id].add(user_id)
+                
+                if groups_to_check:
+                    logger.debug(f"开始定期成员检查，涉及 {len(groups_to_check)} 个群聊。")
+
+                for group_id, users_in_group_to_check in groups_to_check.items():
+                    try:
+                        # 获取群成员列表
+                        members_info = await client.api.call_action('get_group_member_list', group_id=int(group_id), no_cache=True)
+                        current_member_ids = {member['user_id'] for member in members_info}
+                        
+                        # 找出已经不在群里的用户
+                        users_left = users_in_group_to_check - current_member_ids
+                        
+                        for user_id in users_left:
+                            user_identifier = (group_id, user_id)
+                            self.remove_user_from_watchlist(user_identifier, "定期检查发现用户已不在群内")
+
+                        # 避免API调用过于频繁
+                        await asyncio.sleep(5)
+
+                    except Exception as e:
+                        logger.error(f"定期检查群 {group_id} 成员时出错: {e}")
+
+            except Exception as e:
+                logger.error(f"periodic_member_check 任务发生未知错误: {e}")
+            
+            # 每小时检查一次
+            await asyncio.sleep(3600)
