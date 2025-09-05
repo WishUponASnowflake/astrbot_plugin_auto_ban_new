@@ -2,7 +2,7 @@
 <img style="width:70%" src="https://count.getloli.com/@astrbot_plugin_auto_ban_new?name=astrbot_plugin_auto_ban_new&theme=gelbooru-h&padding=5&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" alt=":name">
 </div>
 
-# AstrBot 自动禁言新成员插件
+# AstrBot 自动禁言新成员插件 v 1.1
 又名“进群禁言”  
 简体中文 | [EN](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README_en.md) | [日本語](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README_JP.md)
 
@@ -10,13 +10,27 @@
 
 - **插件名称**: astrbot_plugin_auto_ban_new
 - **作者**: 糯米茨
-- **版本**: v1.0
+- **版本**: v1.1
 - **仓库地址**: [GitHub](https://github.com/nuomicici/astrbot_plugin_auto_ban_new)
 - **标签**: 群管、禁言
 
 ## 📖 插件简介
 
 在指定群聊中对新入群用户自动禁言并发送欢迎消息，支持多种方式解除监听。帮助群管理员更好地管理新成员，确保新成员先阅读群规再发言。
+
+## 📄 更新日志
+
+### v1.1 (当前版本)
+- ✨ 添加了退群或踢出判断，在群员退出群聊时删除其数据，减少空间占用
+- 🔒 添加了对于违规用户的限制措施，被禁言指定次数时可以自动发送文本并踢出群聊
+- 2025.09.05更新
+### v1.0 
+- ✨ 初始版本发布
+- 🔒 支持自动禁言新成员
+- 🎯 递进式禁言机制
+- 🔓 多种解除监听方式
+- ⚙️ 完整的配置系统
+- 💾 数据持久化存储
 
 ## ✨ 主要功能
 
@@ -27,6 +41,8 @@
   - 第2次: 180秒（3分钟）
   - 第3次: 600秒（10分钟）
   - 第4次及以后: 3600秒（1小时）
+- **成员退群清除**： 识别群员离开群聊，自动删除监听列表，防止储存文件无限制添加数据
+- **自动踢出**： 对于多次违规的用户，设置了次数上限，达到次数自动踢出
 
 ### 🎯 智能消息过滤
 - 自动识别有效消息（文本、@、图片、视频等）
@@ -99,6 +115,13 @@ git clone https://github.com/nuomicici/astrbot_plugin_auto_ban_new
 | `enable_poke_whitelist` | 布尔 | 启用戳一戳解除监听 | `false` |
 | `poke_whitelist_message` | 文本 | 戳一戳解除监听提示 | 默认提示词 |
 
+### 踢出相关配置
+
+| 配置项 | 类型 | 说明 | 默认值 |
+|--------|------|------|--------|
+| `kick_threshold` | 整数 | 禁言次数踢出阈值（包括入群禁言那一次） | `7` |
+| `kick_message` | 文本 | 踢出群聊时的提示词 | 默认提示词 |
+
 ## 📝 使用说明
 
 ### 管理员操作
@@ -169,16 +192,6 @@ A: 通常是权限问题：
 A: 配置修改后会立即生效，如果仍有问题：
 - 检查配置格式是否正确
 - 重启 AstrBot 服务
-
-## 📄 更新日志
-
-### v1.0 (当前版本)
-- ✨ 初始版本发布
-- 🔒 支持自动禁言新成员
-- 🎯 递进式禁言机制
-- 🔓 多种解除监听方式
-- ⚙️ 完整的配置系统
-- 💾 数据持久化存储
 
 ## 🤝 贡献
 
