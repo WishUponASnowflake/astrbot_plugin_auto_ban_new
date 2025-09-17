@@ -5,6 +5,12 @@
     "hint": "输入需要启用自动禁言功能的QQ群号，每行一个群号",
     "default": []
   },
+  "enable_follow_up_monitoring": {
+    "description": "启用后续发言监测功能",
+    "type": "bool",
+    "hint": "开启后会监测新成员入群后的发言情况并进行后续禁言处理；关闭后仅对新成员进行入群禁言，不再进行后续监测",
+    "default": false
+  },
   "ban_durations": {
     "description": "自动禁言时长设置（秒）",
     "type": "object",
@@ -45,7 +51,7 @@
   "ban_messages": {
     "description": "禁言提示消息",
     "type": "object",
-    "hint": "按禁言次数设置对应的提示消息",
+    "hint": "按禁言次数设置对应的提示消息（仅在启用后续发言监测时生效）",
     "items": {
       "first_message": {
         "description": "第1次禁言提示",
@@ -76,31 +82,31 @@
   "whitelist_keywords": {
     "description": "解除监听关键词列表",
     "type": "list",
-    "hint": "用户发送包含这些关键词的消息时会被移除出监听列表，每行一个关键词",
+    "hint": "用户发送包含这些关键词的消息时会被移除出监听列表，每行一个关键词（仅在启用后续发言监测时生效）",
     "default": ["我已阅读并同意遵守群规"]
   },
   "enable_poke_whitelist": {
     "description": "启用戳一戳解除监听功能。该功能未进行事件截断，可能会触发其他插件的戳一戳事件，请注意！",
     "type": "bool",
-    "hint": "开启后，被监听用户戳一戳机器人也会被解除监听",
+    "hint": "开启后，被监听用户戳一戳机器人也会被解除监听（仅在启用后续发言监测时生效）",
     "default": false
   },
   "poke_whitelist_message": {
     "description": "戳一戳解除监听提示消息",
     "type": "text",
-    "hint": "用户通过戳一戳解除监听时发送的提示消息，建议为空",
+    "hint": "用户通过戳一戳解除监听时发送的提示消息，建议为空（仅在启用后续发言监测时生效）",
     "default": ""
   },
   "kick_threshold": {
     "description": "踢出阈值",
     "type": "int",
-    "hint": "用户累计被禁言多少次后将被自动踢出群聊",
+    "hint": "用户累计被禁言多少次后将被自动踢出群聊（仅在启用后续发言监测时生效）",
     "default": 7
   },
   "kick_message": {
     "description": "踢出提示消息",
     "type": "text",
-    "hint": "用户达到踢出阈值时，在被踢出前收到的消息",
+    "hint": "用户达到踢出阈值时，在被踢出前收到的消息（仅在启用后续发言监测时生效）",
     "default": "由于多次不看群规，你已被标记为“恶意用户”，现在踢出。你可以重新添加，但请记得查阅群规后再发言。"
   }
 }
