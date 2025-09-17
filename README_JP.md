@@ -2,7 +2,7 @@
 <img style="width:70%" src="https://count.getloli.com/@astrbot_plugin_auto_ban_new?name=astrbot_plugin_auto_ban_new&theme=gelbooru-h&padding=5&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" alt=":name">
 </div>
 
-# AstrBot 新規メンバー自動ミュートプラグイン v 1.1
+# AstrBot 新規メンバー自動ミュートプラグイン v 1.2
 別名「参加時ミュート」
 [简体中文](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README.md) | [EN](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README_en.md) | 日本語
 
@@ -10,7 +10,7 @@
 
 - **プラグイン名**: astrbot_plugin_auto_ban_new
 - **作者**: 糯米茨 (nuomicici)
-- **バージョン**: v1.1
+- **バージョン**: v1.2
 - **リポジトリ**: [GitHub](https://github.com/nuomicici/astrbot_plugin_auto_ban_new)
 - **タグ**: グループ管理、ミュート
 
