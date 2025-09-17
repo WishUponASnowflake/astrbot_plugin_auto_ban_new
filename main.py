@@ -127,7 +127,7 @@ def perm_required(required_level: PermLevel, check_at: bool = True):
                     PermLevel.HIGH: "高等级成员",
                     PermLevel.MEMBER: "普通成员"
                 }.get(required_level, "未知权限")
-                yield event.plain_result(f"权限不足，需要{required_str}权限")
+                yield event.plain_result(f"抱歉哦，需要{required_str}权限才可以设置~")
                 return
 
             # 执行原函数
