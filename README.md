@@ -2,7 +2,7 @@
 <img style="width:70%" src="https://count.getloli.com/@astrbot_plugin_auto_ban_new?name=astrbot_plugin_auto_ban_new&theme=gelbooru-h&padding=5&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" alt=":name">
 </div>
 
-# AstrBot 自动禁言新成员插件 v 1.2
+# AstrBot 自动禁言新成员插件 v 1.3
 又名“进群禁言”  
 简体中文 | [EN](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README_en.md) | [日本語](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README_JP.md)
 
@@ -10,7 +10,7 @@
 
 - **插件名称**: astrbot_plugin_auto_ban_new
 - **作者**: 糯米茨
-- **版本**: v1.2
+- **版本**: v1.3
 - **仓库地址**: [GitHub](https://github.com/nuomicici/astrbot_plugin_auto_ban_new)
 - **标签**: 群管、禁言
 
@@ -19,7 +19,12 @@
 在指定群聊中对新入群用户自动禁言并发送欢迎消息，支持多种方式解除监听。帮助群管理员更好地管理新成员，确保新成员先阅读群规再发言。
 
 ## 📄 更新日志
-### v1.2（当前版本）
+### v1.3（当前版本）
+- ☠️ 哈哈哈！添加了命令功能！
+- ✏️ 现已支持通过命令调整配置，无需每次修改都去插件页面了（群管理员均可修改，bot主人不受该限制）
+- 🎵 通过命令` /进群禁言帮助`获取命令列表
+- ✅ 对于bot不是群管理员的情况，会提示无法使用功能~
+### v1.2
 - 🔐 添加了开关进群监听功能
     - 可以在配置界面关闭后续监听禁言
     - 已被列入监听列表的成员在关闭后不会被禁言，但再次启用监听仍会被禁言
