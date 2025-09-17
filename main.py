@@ -9,7 +9,132 @@ from astrbot.core import AstrBotConfig
 import astrbot.api.message_components as Comp
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
 from functools import wraps
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional, List, Dict
+
+# 权限组内容参考https://github.com/Zhalslar/astrbot_plugin_QQAdmin
+class PermLevel:
+    """权限级别枚举类"""
+    UNKNOWN = -1
+    MEMBER = 0
+    HIGH = 1
+    ADMIN = 2
+    OWNER = 3
+    SUPERUSER = 4
+
+    @classmethod
+    def from_str(cls, s: str) -> "PermLevel":
+        s = s.lower()
+        if s == "superuser":
+            return cls.SUPERUSER
+        elif s == "owner":
+            return cls.OWNER
+        elif s == "admin":
+            return cls.ADMIN
+        elif s == "high":
+            return cls.HIGH
+        elif s == "member":
+            return cls.MEMBER
+        else:
+            return cls.UNKNOWN
+
+class PermissionManager:
+    """权限管理器单例类"""
+    _instance: Optional["PermissionManager"] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(
+        self,
+        superusers: Optional[List[str]] = None,
+        perms: Optional[Dict[str, str]] = None,
+        level_threshold: int = 10,
+    ):
+        if self._initialized:
+            return
+        self.superusers = superusers or []
+        self.perms: Dict[str, PermLevel] = {
+            k: PermLevel.from_str(v) for k, v in (perms or {}).items()
+        }
+        self.level_threshold = level_threshold
+        self._initialized = True
+
+    @classmethod
+    def get_instance(
+        cls,
+        superusers: Optional[List[str]] = None,
+        perms: Optional[Dict[str, str]] = None,
+        level_threshold: int = 50,
+    ) -> "PermissionManager":
+        if cls._instance is None:
+            cls._instance = cls(
+                superusers=superusers,
+                perms=perms,
+                level_threshold=level_threshold,
+            )
+        return cls._instance
+
+    async def get_perm_level(
+        self, event: AiocqhttpMessageEvent, user_id: str | int
+    ) -> PermLevel:
+        """获取用户在群内的权限级别"""
+        group_id = event.get_group_id()
+        if int(group_id) == 0 or int(user_id) == 0:
+            return PermLevel.UNKNOWN
+        if str(user_id) in self.superusers:
+            return PermLevel.SUPERUSER
+        try:
+            info = await event.bot.get_group_member_info(
+                group_id=int(group_id), user_id=int(user_id), no_cache=True
+            )
+        except Exception:
+            return PermLevel.UNKNOWN
+        role = info.get("role", "unknown")
+        level = int(info.get("level", 0))
+        
+        if role == "owner":
+            return PermLevel.OWNER
+        elif role == "admin":
+            return PermLevel.ADMIN
+        elif role == "member":
+            return PermLevel.HIGH if level >= self.level_threshold else PermLevel.MEMBER
+        else:
+            return PermLevel.UNKNOWN
+
+# 权限检查装饰器
+def perm_required(required_level: PermLevel, check_at: bool = True):
+    """检查用户权限的装饰器"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(self, event: AiocqhttpMessageEvent, *args, **kwargs):
+            # 非群聊环境直接拒绝
+            if not event.get_group_id():
+                yield event.plain_result("此命令仅在群聊中可用")
+                return
+
+            perm_mgr = PermissionManager.get_instance()
+            user_level = await perm_mgr.get_perm_level(event, event.get_sender_id())
+
+            # 检查用户权限
+            if user_level < required_level:
+                required_str = {
+                    PermLevel.SUPERUSER: "超级管理员",
+                    PermLevel.OWNER: "群主",
+                    PermLevel.ADMIN: "管理员",
+                    PermLevel.HIGH: "高等级成员",
+                    PermLevel.MEMBER: "普通成员"
+                }.get(required_level, "未知权限")
+                yield event.plain_result(f"权限不足，需要{required_str}权限")
+                return
+
+            # 执行原函数
+            async for result in func(self, event, *args, **kwargs):
+                yield result
+        return wrapper
+    return decorator
 
 # 高优先级常量，确保事件处理优先级
 PRIO_HIGH = 100
@@ -29,12 +154,23 @@ high_priority_event = _high_priority(filter.event_message_type)
     "astrbot_plugin_auto_ban_new",
     "糯米茨",
     "在指定群聊中对新入群用户自动禁言并发送欢迎消息，支持多种方式解除监听。",
-    "v1.3"
+    "v1.4"
 )
 class AutoBanNewMemberPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context)
         self.config = config
+        
+        # 初始化权限管理器
+        self.admins_id = context.get_config().get("admins_id", [])
+        self.perm_level_threshold = self.config.get("level_threshold", 50)
+        self.permissions = self.config.get("permissions", {})
+        
+        PermissionManager.get_instance(
+            superusers=self.admins_id,
+            perms=self.permissions,
+            level_threshold=self.perm_level_threshold
+        )
         
         # 读取基础配置
         self.target_groups = set(self.config.get("target_groups", []))
@@ -53,7 +189,7 @@ class AutoBanNewMemberPlugin(Star):
         
         # 读取消息配置，提供默认值
         self.welcome_message = self.config.get("welcome_message") or (
-            "欢迎加入本群！为了保证你能静下心看一眼群规，避免问出已有解决方法的问题，你已被自动禁言3分钟。"
+            "欢迎加入本群！为了保证你能静下心看一眼群规你已被自动禁言3分钟。"
             "\n请先查看群规，并阅读群公告。看完了还有问题可以@我"
         )
         
@@ -84,81 +220,7 @@ class AutoBanNewMemberPlugin(Star):
         # 使用框架标准方式获取数据目录
         self.data_dir = StarTools.get_data_dir()
         self.data_file = self.data_dir / "banned_users.json"
-        
-    async def is_framework_admin(self, event: AstrMessageEvent) -> bool:
-        """检查用户是否为框架管理员"""
-        try:
-            user_id = event.get_sender_id()
-            if not user_id:
-                return False
-            
-            # 获取框架管理员配置
-            framework_config = self.context.get_config()
-            if hasattr(framework_config, 'admins') and framework_config.admins:
-                return str(user_id) in [str(admin) for admin in framework_config.admins]
-            
-            return False
-        except Exception as e:
-            logger.error(f"检查框架管理员权限时出错: {e}")
-            return False
 
-    async def check_admin_permission(self, event: AstrMessageEvent) -> bool:
-        """检查用户是否为群管理员或框架管理员"""
-        try:
-            # 首先检查是否为框架管理员
-            if await self.is_framework_admin(event):
-                return True
-                
-            group_id = event.get_group_id()
-            if not group_id:
-                return False
-                
-            if not isinstance(event, AiocqhttpMessageEvent):
-                return False
-                
-            user_id = event.get_sender_id()
-            if not user_id:
-                return False
-                
-            # 获取群成员列表（不使用缓存，每次重新检查）
-            members_info = await event.bot.api.call_action('get_group_member_list', group_id=int(group_id), no_cache=True)
-            
-            # 查找当前用户的权限
-            for member in members_info:
-                if member.get('user_id') == int(user_id):
-                    role = member.get('role', 'member')
-                    return role in ['owner', 'admin']  # 群主或管理员
-                    
-            return False
-        except Exception as e:
-            logger.error(f"检查管理员权限时出错: {e}")
-            return False
-
-    async def check_bot_admin_permission(self, event: AiocqhttpMessageEvent) -> bool:
-        """检查机器人是否为群管理员"""
-        try:
-            group_id = event.get_group_id()
-            if not group_id:
-                return False
-            
-            # 获取机器人自己的QQ号
-            bot_info = await event.bot.api.call_action('get_login_info')
-            bot_user_id = bot_info.get('user_id', 0)
-            
-            # 获取群成员列表（不使用缓存）
-            members_info = await event.bot.api.call_action('get_group_member_list', group_id=int(group_id), no_cache=True)
-            
-            # 查找机器人的权限
-            for member in members_info:
-                if member.get('user_id') == int(bot_user_id):
-                    role = member.get('role', 'member')
-                    return role in ['owner', 'admin']  # 机器人是群主或管理员
-                    
-            return False
-        except Exception as e:
-            logger.error(f"检查机器人管理员权限时出错: {e}")
-            return False
-        
     async def initialize(self):
         """插件初始化"""
         try:
@@ -564,7 +626,27 @@ class AutoBanNewMemberPlugin(Star):
             
             # 每小时检查一次
             await asyncio.sleep(3600)
-
+    @filter.command("添加启用群聊")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    async def add_target_group(self, event: AiocqhttpMessageEvent, group_id: str) -> AsyncGenerator[MessageEventResult, None]:
+        """添加启用群聊"""
+        # 验证群号格式（必须为纯数字）
+        if not group_id.isdigit():
+            yield event.plain_result("群号必须为纯数字")
+            return
+            
+        # 检查是否已经在列表中
+        if group_id in self.target_groups:
+            yield event.plain_result(f"群 {group_id} 已在启用列表中")
+            return
+            
+        # 添加到配置
+        self.target_groups.add(group_id)
+        target_groups_list = list(self.target_groups)
+        self.config["target_groups"] = target_groups_list
+        self.config.save_config()
+        
+        yield event.plain_result(f"已添加群 {group_id} 到启用列表")
     # 命令功能
     @filter.command_group("自动禁言")
     def auto_ban_commands(self):
@@ -572,48 +654,18 @@ class AutoBanNewMemberPlugin(Star):
         pass
 
     @auto_ban_commands.command("off")
-    async def disable_monitoring(self, event: AstrMessageEvent) -> AsyncGenerator[MessageEventResult, None]:
+    @perm_required(PermLevel.ADMIN)
+    async def disable_monitoring(self, event: AiocqhttpMessageEvent) -> AsyncGenerator[MessageEventResult, None]:
         """关闭后续禁言监测功能"""
-        # 检查是否在群聊中
-        if not event.get_group_id():
-            yield event.plain_result("此命令仅在群聊中可用")
-            return
-            
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-            
-        # 检查机器人管理员权限
-        if isinstance(event, AiocqhttpMessageEvent) and not await self.is_framework_admin(event):
-            if not await self.check_bot_admin_permission(event):
-                yield event.plain_result("我不是这个群的管理员呢，无法启用该功能哦~")
-                return
-            
         self.enable_follow_up_monitoring = False
         self.config["enable_follow_up_monitoring"] = False
         self.config.save_config()
         yield event.plain_result("已关闭后续发言监测功能，新成员入群仍会被禁言，但不会进行后续监听")
 
     @auto_ban_commands.command("on") 
-    async def enable_monitoring(self, event: AstrMessageEvent) -> AsyncGenerator[MessageEventResult, None]:
+    @perm_required(PermLevel.ADMIN)
+    async def enable_monitoring(self, event: AiocqhttpMessageEvent) -> AsyncGenerator[MessageEventResult, None]:
         """开启后续禁言监测功能"""
-        # 检查是否在群聊中
-        if not event.get_group_id():
-            yield event.plain_result("此命令仅在群聊中可用")
-            return
-            
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-            
-        # 检查机器人管理员权限
-        if isinstance(event, AiocqhttpMessageEvent) and not await self.is_framework_admin(event):
-            if not await self.check_bot_admin_permission(event):
-                yield event.plain_result("我不是这个群的管理员呢，无法启用该功能哦~")
-                return
-            
         self.enable_follow_up_monitoring = True
         self.config["enable_follow_up_monitoring"] = True
         self.config.save_config()
@@ -626,24 +678,9 @@ class AutoBanNewMemberPlugin(Star):
         yield event.plain_result("已开启后续发言监测功能，新成员入群后将被持续监听")
 
     @filter.command("设置解禁关键词")
-    async def set_whitelist_keywords(self, event: AstrMessageEvent, keywords: str) -> AsyncGenerator[MessageEventResult, None]:
+    @perm_required(PermLevel.ADMIN)
+    async def set_whitelist_keywords(self, event: AiocqhttpMessageEvent, keywords: str) -> AsyncGenerator[MessageEventResult, None]:
         """设置解除监听的关键词"""
-        # 检查是否在群聊中
-        if not event.get_group_id():
-            yield event.plain_result("此命令仅在群聊中可用")
-            return
-            
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-            
-        # 检查机器人管理员权限
-        if isinstance(event, AiocqhttpMessageEvent) and not await self.is_framework_admin(event):
-            if not await self.check_bot_admin_permission(event):
-                yield event.plain_result("我不是这个群的管理员呢，无法启用该功能哦~")
-                return
-            
         # 解析关键词（用空格分隔）
         keyword_list = [kw.strip() for kw in keywords.split() if kw.strip()]
         if not keyword_list:
@@ -658,24 +695,9 @@ class AutoBanNewMemberPlugin(Star):
         yield event.plain_result(f"已设置解禁关键词：{keywords_str}")
 
     @filter.command("设置禁言踢出次数")
-    async def set_kick_threshold(self, event: AstrMessageEvent, threshold: int) -> AsyncGenerator[MessageEventResult, None]:
+    @perm_required(PermLevel.ADMIN)
+    async def set_kick_threshold(self, event: AiocqhttpMessageEvent, threshold: int) -> AsyncGenerator[MessageEventResult, None]:
         """设置踢出阈值"""
-        # 检查是否在群聊中
-        if not event.get_group_id():
-            yield event.plain_result("此命令仅在群聊中可用")
-            return
-            
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-            
-        # 检查机器人管理员权限
-        if isinstance(event, AiocqhttpMessageEvent) and not await self.is_framework_admin(event):
-            if not await self.check_bot_admin_permission(event):
-                yield event.plain_result("我不是这个群的管理员呢，无法启用该功能哦~")
-                return
-            
         # 验证阈值范围
         if threshold < 2:
             yield event.plain_result("踢出阈值不能小于2次")
@@ -690,24 +712,9 @@ class AutoBanNewMemberPlugin(Star):
         yield event.plain_result(f"已设置踢出阈值为：{threshold} 次")
 
     @filter.command("设置禁言时长")
-    async def set_ban_durations(self, event: AstrMessageEvent, durations_str: str) -> AsyncGenerator[MessageEventResult, None]:
+    @perm_required(PermLevel.ADMIN)
+    async def set_ban_durations(self, event: AiocqhttpMessageEvent, durations_str: str) -> AsyncGenerator[MessageEventResult, None]:
         """设置禁言时长"""
-        # 检查是否在群聊中
-        if not event.get_group_id():
-            yield event.plain_result("此命令仅在群聊中可用")
-            return
-            
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-            
-        # 检查机器人管理员权限
-        if isinstance(event, AiocqhttpMessageEvent) and not await self.is_framework_admin(event):
-            if not await self.check_bot_admin_permission(event):
-                yield event.plain_result("我不是这个群的管理员呢，无法启用该功能哦~")
-                return
-        
         try:
             # 解析参数，格式：1/300 2/600 3/1800 4/3600
             duration_pairs = durations_str.strip().split()
@@ -756,25 +763,10 @@ class AutoBanNewMemberPlugin(Star):
             logger.error(f"设置禁言时长时出错: {e}")
             yield event.plain_result("设置失败，请检查参数格式。示例：1/10 2/100 3/1000 4/10000")
 
-    @filter.command("设置欢迎消息")
-    async def set_welcome_message(self, event: AstrMessageEvent, message: str) -> AsyncGenerator[MessageEventResult, None]:
+    @filter.command("设置入群提醒")
+    @perm_required(PermLevel.ADMIN)
+    async def set_welcome_message(self, event: AiocqhttpMessageEvent, message: str) -> AsyncGenerator[MessageEventResult, None]:
         """设置新成员入群欢迎消息"""
-        # 检查是否在群聊中
-        if not event.get_group_id():
-            yield event.plain_result("此命令仅在群聊中可用")
-            return
-            
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-            
-        # 检查机器人管理员权限
-        if isinstance(event, AiocqhttpMessageEvent) and not await self.is_framework_admin(event):
-            if not await self.check_bot_admin_permission(event):
-                yield event.plain_result("我不是这个群的管理员呢，无法启用该功能哦~")
-                return
-            
         if not message.strip():
             yield event.plain_result("欢迎消息不能为空")
             return
@@ -782,27 +774,12 @@ class AutoBanNewMemberPlugin(Star):
         self.welcome_message = message
         self.config["welcome_message"] = message
         self.config.save_config()
-        yield event.plain_result(f"已设置欢迎消息：\n{message}")
+        yield event.plain_result(f"已设置入群提醒：\n{message}")
 
     @filter.command("设置禁言提示消息")
-    async def set_ban_message(self, event: AstrMessageEvent, config_str: str) -> AsyncGenerator[MessageEventResult, None]:
+    @perm_required(PermLevel.ADMIN)
+    async def set_ban_message(self, event: AiocqhttpMessageEvent, config_str: str) -> AsyncGenerator[MessageEventResult, None]:
         """设置禁言提示消息"""
-        # 检查是否在群聊中
-        if not event.get_group_id():
-            yield event.plain_result("此命令仅在群聊中可用")
-            return
-            
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-            
-        # 检查机器人管理员权限
-        if isinstance(event, AiocqhttpMessageEvent) and not await self.is_framework_admin(event):
-            if not await self.check_bot_admin_permission(event):
-                yield event.plain_result("我不是这个群的管理员呢，无法启用该功能哦~")
-                return
-        
         try:
             # 解析参数，格式：次数/消息内容
             if '/' not in config_str:
@@ -841,24 +818,9 @@ class AutoBanNewMemberPlugin(Star):
             yield event.plain_result("设置失败，请检查参数格式")
 
     @filter.command("设置戳一戳提示消息")
-    async def set_poke_message(self, event: AstrMessageEvent, message: str) -> AsyncGenerator[MessageEventResult, None]:
+    @perm_required(PermLevel.ADMIN)
+    async def set_poke_message(self, event: AiocqhttpMessageEvent, message: str) -> AsyncGenerator[MessageEventResult, None]:
         """设置戳一戳解除监听提示消息"""
-        # 检查是否在群聊中
-        if not event.get_group_id():
-            yield event.plain_result("此命令仅在群聊中可用")
-            return
-            
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-            
-        # 检查机器人管理员权限
-        if isinstance(event, AiocqhttpMessageEvent) and not await self.is_framework_admin(event):
-            if not await self.check_bot_admin_permission(event):
-                yield event.plain_result("我不是这个群的管理员呢，无法启用该功能哦~")
-                return
-            
         self.poke_whitelist_message = message
         self.config["poke_whitelist_message"] = message
         self.config.save_config()
@@ -869,24 +831,9 @@ class AutoBanNewMemberPlugin(Star):
             yield event.plain_result("已设置戳一戳解除监听提示消息为空（不发送提示）")
 
     @filter.command("设置踢出提示消息")
-    async def set_kick_message(self, event: AstrMessageEvent, message: str) -> AsyncGenerator[MessageEventResult, None]:
+    @perm_required(PermLevel.ADMIN)
+    async def set_kick_message(self, event: AiocqhttpMessageEvent, message: str) -> AsyncGenerator[MessageEventResult, None]:
         """设置踢出提示消息"""
-        # 检查是否在群聊中
-        if not event.get_group_id():
-            yield event.plain_result("此命令仅在群聊中可用")
-            return
-            
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-            
-        # 检查机器人管理员权限
-        if isinstance(event, AiocqhttpMessageEvent) and not await self.is_framework_admin(event):
-            if not await self.check_bot_admin_permission(event):
-                yield event.plain_result("我不是这个群的管理员呢，无法启用该功能哦~")
-                return
-            
         if not message.strip():
             yield event.plain_result("踢出提示消息不能为空")
             return
@@ -896,61 +843,38 @@ class AutoBanNewMemberPlugin(Star):
         self.config.save_config()
         yield event.plain_result(f"已设置踢出提示消息：\n{message}")
 
-    @filter.command("添加启用群聊")
-    async def add_target_group(self, event: AstrMessageEvent, group_id: str) -> AsyncGenerator[MessageEventResult, None]:
-        """添加启用群聊"""
-        # 检查管理员权限
-        if not await self.check_admin_permission(event):
-            yield event.plain_result("抱歉，您不是管理员，暂不支持修改")
-            return
-        
-        # 验证群号格式（必须为纯数字）
-        if not group_id.isdigit():
-            yield event.plain_result("群号必须为纯数字")
-            return
-            
-        # 检查是否已经在列表中
-        if group_id in self.target_groups:
-            yield event.plain_result(f"群 {group_id} 已在启用列表中")
-            return
-            
-        # 添加到配置
-        self.target_groups.add(group_id)
-        target_groups_list = list(self.target_groups)
-        self.config["target_groups"] = target_groups_list
-        self.config.save_config()
-        
-        yield event.plain_result(f"已添加群 {group_id} 到启用列表")
-
     @filter.command("进群禁言帮助", alias={"自动禁言帮助"})
-    async def show_help(self, event: AstrMessageEvent) -> AsyncGenerator[MessageEventResult, None]:
+    async def show_help(self, event: AiocqhttpMessageEvent) -> AsyncGenerator[MessageEventResult, None]:
         """显示插件帮助信息"""
         help_text = """===AstrBot 自动禁言插件===
-v1.3 by 糯米茨(3218444911)
+v1.4 by 糯米茨(3218444911)
     
 插件简介：
 在指定群聊中对新入群用户自动禁言并发送欢迎消息，支持多种方式解除监听。帮助群管理员更好地管理新成员，确保新成员先阅读群规再发言。
     
-可用命令（仅群管理员）：
+可用命令（仅群管理员&BOT管理员）：
 ⚙️ 功能设置
 - /自动禁言 off/on - 关闭/开启后续禁言监测
 - /设置解禁关键词 <关键词> - 设置解除监听关键词
 - /设置禁言踢出次数 <次数> - 设置踢出阈值
 - /设置禁言时长 <配置> - 设置各次禁言时长
-- /添加启用群聊 <群号> - 添加启用群聊
+
 ✅ 信息提示
-- /设置欢迎消息 <消息内容> - 设置入群欢迎消息
+- /设置入群提醒 <消息内容> - 设置入群提示消息
 - /设置禁言提示消息 <次数/消息> - 设置禁言提示消息
 - /设置戳一戳提示消息 <消息内容> - 设置戳一戳解除提示
 - /设置踢出提示消息 <消息内容> - 设置踢出提示消息
 - /进群禁言帮助 - 显示此帮助信息
+
+🛠️ 超级管理员专用
+- /添加启用群聊 <群号> - 添加启用群聊
 
 示例用法：
 - /设置解禁关键词 我已阅读群规 同意遵守
 - /设置禁言踢出次数 5
 - /设置禁言时长 1/60 2/300 3/1800 4/7200
 - /添加启用群聊 123456789
-- /设置欢迎消息 欢迎新成员！请先阅读群规
+- /设置入群提醒 欢迎新成员！请先阅读群规
 - /设置禁言提示消息 2/请仔细阅读群规后再发言
 - /设置戳一戳提示消息 已为您解除监听
 - /设置踢出提示消息 多次违规，现在移除群聊
