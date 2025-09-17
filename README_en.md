@@ -2,7 +2,7 @@
 <div align="center"><img style="width:70%" src="https://count.getloli.com/@astrbot_plugin_auto_ban_new?name=astrbot_plugin_auto_ban_new&theme=gelbooru-h&padding=5&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" alt=":name">
 </div>
 
-# AstrBot Auto Mute New Members Plugin v 1.1
+# AstrBot Auto Mute New Members Plugin v 1.2
 Also known as "Mute on Join"
 [简体中文](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README.md) | EN | [日本語](https://github.com/nuomicici/astrbot_plugin_auto_ban_new/blob/main/README_JP.md)
 
@@ -10,7 +10,7 @@ Also known as "Mute on Join"
 
 - **Plugin Name**: astrbot_plugin_auto_ban_new
 - **Author**: 糯米茨 (nuomicici)
-- **Version**: v1.1
+- **Version**: v1.2
 - **Repository**: [GitHub](https://github.com/nuomicici/astrbot_plugin_auto_ban_new)
 - **Tags**: Group Management, Mute
 
@@ -19,8 +19,13 @@ Also known as "Mute on Join"
 This plugin automatically mutes new members in specified group chats and sends a welcome message. It supports multiple ways to remove the mute. It helps group administrators better manage new members and ensures that new members read the group rules before speaking.
 
 ## 📄 Changelog
+### v1.2 (Current Version)
+- 🔐 Added toggle for follow-up monitoring functionality
+    - Can disable follow-up monitoring and muting in the configuration interface
+    - Members already on the monitoring list will not be muted when disabled, but will resume being monitored when re-enabled
+    - New members joining after disabling will not be added to the monitoring list
 
-### v1.1 (Current Version)
+### v1.1 
 - ✨ Added detection for members leaving or being kicked, deleting their data to reduce storage usage
 - 🔒 Added restrictive measures for users who violate rules, allowing for automatic text messages and kicking from the group after a specified number of mutes
 - Updated on 2025.09.05
