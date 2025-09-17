@@ -28,7 +28,7 @@ high_priority_event = _high_priority(filter.event_message_type)
     "astrbot_plugin_auto_ban_new",
     "糯米茨",
     "在指定群聊中对新入群用户自动禁言并发送欢迎消息，支持多种方式解除监听。",
-    "v1.1"
+    "v1.2"
 )
 class AutoBanNewMemberPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
@@ -37,6 +37,9 @@ class AutoBanNewMemberPlugin(Star):
         
         # 读取基础配置
         self.target_groups = set(self.config.get("target_groups", []))
+        
+        # 新增：是否启用后续发言监测功能（默认关闭）
+        self.enable_follow_up_monitoring = self.config.get("enable_follow_up_monitoring", False)
         
         # 构建禁言时长列表，提供默认值防止配置缺失
         ban_durations_config = self.config.get("ban_durations", {})
@@ -71,7 +74,7 @@ class AutoBanNewMemberPlugin(Star):
         # 新增：踢出功能配置
         self.kick_threshold = self.config.get("kick_threshold", 7)
         self.kick_message = self.config.get("kick_message") or (
-            "由于多次不看群规，你已被标记为“恶意用户”，现在踢出。你可以重新添加，但请记得查阅群规后再发言。"
+            "由于多次不看群规，你已被标记为\"恶意用户\"，现在踢出。你可以重新添加，但请记得查阅群规后再发言。"
         )
         
         # 用户禁言记录存储 (群ID, 用户ID): 累计禁言次数
@@ -86,9 +89,12 @@ class AutoBanNewMemberPlugin(Star):
         try:
             self.data_dir.mkdir(parents=True, exist_ok=True)
             self._load_banned_users()
-            # 启动定期检查成员的后台任务
-            asyncio.create_task(self.periodic_member_check())
-            logger.info("自动禁言新成员插件已初始化，成功加载历史数据并启动后台检查任务")
+            # 只有启用后续监测时才启动定期检查任务
+            if self.enable_follow_up_monitoring:
+                asyncio.create_task(self.periodic_member_check())
+                logger.info("自动禁言新成员插件已初始化，后续发言监测功能已启用，成功加载历史数据并启动后台检查任务")
+            else:
+                logger.info("自动禁言新成员插件已初始化，后续发言监测功能已关闭，仅对新成员进行入群禁言")
         except PermissionError as e:
             logger.error(f"初始化插件时权限不足: {e}")
         except OSError as e:
@@ -99,8 +105,11 @@ class AutoBanNewMemberPlugin(Star):
     async def terminate(self):
         """插件终止时保存数据"""
         try:
-            self._save_banned_users()
-            logger.info("自动禁言新成员插件已终止，成功保存数据")
+            if self.enable_follow_up_monitoring:
+                self._save_banned_users()
+                logger.info("自动禁言新成员插件已终止，成功保存数据")
+            else:
+                logger.info("自动禁言新成员插件已终止")
         except PermissionError as e:
             logger.error(f"终止插件时权限不足，无法保存数据: {e}")
         except OSError as e:
@@ -110,6 +119,11 @@ class AutoBanNewMemberPlugin(Star):
 
     def _load_banned_users(self):
         """从文件加载被禁言用户数据"""
+        # 如果未启用后续监测，则不需要加载历史数据
+        if not self.enable_follow_up_monitoring:
+            self.banned_users = {}
+            return
+            
         try:
             if self.data_file.exists():
                 with open(self.data_file, 'r', encoding='utf-8') as f:
@@ -129,12 +143,18 @@ class AutoBanNewMemberPlugin(Star):
                         continue
                     self.banned_users[(group_id, user_id)] = count
                 logger.debug(f"从{self.data_file}加载了{len(self.banned_users)}个被禁言用户")
+            else:
+                self.banned_users = {}
         except Exception as e:
             logger.error(f"加载被禁言用户数据失败: {e}")
             self.banned_users = {}
 
     def _save_banned_users(self):
         """将被禁言用户数据保存到文件"""
+        # 如果未启用后续监测，则不需要保存数据
+        if not self.enable_follow_up_monitoring:
+            return
+            
         try:
             data = []
             for key, value in self.banned_users.items():
@@ -171,11 +191,15 @@ class AutoBanNewMemberPlugin(Star):
 
     def remove_user_from_watchlist(self, user_identifier: tuple, reason: str):
         """从监听列表中移除用户"""
+        # 如果未启用后续监测，则无需移除操作
+        if not self.enable_follow_up_monitoring:
+            return False
+            
         group_id, user_id = user_identifier
         if user_identifier in self.banned_users:
             del self.banned_users[user_identifier]
             self._save_banned_users()
-            logger.info(f"用户 {user_id} 在群 {group_id} 中因“{reason}”被解除监听")
+            logger.info(f"用户 {user_id} 在群 {group_id} 中因\"{reason}\"被解除监听")
             return True
         return False
 
@@ -211,10 +235,13 @@ class AutoBanNewMemberPlugin(Star):
                     )
                     logger.info(f"已在群{group_id}中第1次禁言新成员{user_id}，时长{first_ban_duration}秒")
                     
-                    # 记录用户到监听列表
-                    self.banned_users[user_identifier] = 1
-                    self._save_banned_users()
-                    logger.debug(f"已添加用户到监听列表：{user_identifier}，累计禁言次数：1")
+                    # 只有启用后续监测时才记录用户到监听列表
+                    if self.enable_follow_up_monitoring:
+                        self.banned_users[user_identifier] = 1
+                        self._save_banned_users()
+                        logger.debug(f"已添加用户到监听列表：{user_identifier}，累计禁言次数：1")
+                    else:
+                        logger.debug(f"后续发言监测功能已关闭，不将用户{user_id}添加到监听列表")
                     
                     # 发送欢迎消息
                     chain = [
@@ -231,6 +258,10 @@ class AutoBanNewMemberPlugin(Star):
     @high_priority_event(filter.EventMessageType.ALL)
     async def handle_group_decrease(self, event: AiocqhttpMessageEvent):
         """处理群成员减少事件（主动退群或被踢）"""
+        # 如果未启用后续监测，则不需要处理成员减少事件
+        if not self.enable_follow_up_monitoring:
+            return
+            
         try:
             if not hasattr(event, "message_obj") or not hasattr(event.message_obj, "raw_message"):
                 return
@@ -259,7 +290,8 @@ class AutoBanNewMemberPlugin(Star):
     @high_priority_event(filter.EventMessageType.ALL)
     async def handle_poke_whitelist(self, event: AiocqhttpMessageEvent):
         """处理戳一戳解除监听事件"""
-        if not self.enable_poke_whitelist:
+        # 如果未启用后续监测或未启用戳一戳白名单，则直接返回
+        if not self.enable_follow_up_monitoring or not self.enable_poke_whitelist:
             return
             
         try:
@@ -306,6 +338,10 @@ class AutoBanNewMemberPlugin(Star):
     @high_priority_event(filter.EventMessageType.GROUP_MESSAGE)
     async def handle_banned_user_message(self, event: AiocqhttpMessageEvent):
         """处理被监听用户的群消息"""
+        # 如果未启用后续监测，则直接返回，不处理任何消息
+        if not self.enable_follow_up_monitoring:
+            return
+            
         try:
             if not hasattr(event, "message_obj") or not hasattr(event.message_obj, "raw_message"):
                 return
@@ -404,6 +440,10 @@ class AutoBanNewMemberPlugin(Star):
 
     async def periodic_member_check(self):
         """定期检查被监听的用户是否还在群内，以防错过退群事件"""
+        # 如果未启用后续监测，则不启动定期检查任务
+        if not self.enable_follow_up_monitoring:
+            return
+            
         await asyncio.sleep(60)  # 启动后稍作等待，避免与其他启动任务冲突
         while True:
             try:
